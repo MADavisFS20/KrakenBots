@@ -168,42 +168,42 @@ def calculate_macd(ohlc_data, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL
     
     closes = np.array([float(c[4]) for c in ohlc_data])
     
-    # Calculate EMAs
-    ema_fast = _calculate_ema(closes, fast)
-    ema_slow = _calculate_ema(closes, slow)
+    # Calculate EMA arrays
+    ema_fast_array = _calculate_ema_array(closes, fast)
+    ema_slow_array = _calculate_ema_array(closes, slow)
     
     # MACD line = Fast EMA - Slow EMA
-    macd_line = ema_fast - ema_slow
+    macd_array = ema_fast_array - ema_slow_array
     
     # Signal line = EMA of MACD line
-    signal_line = _calculate_ema_from_values(macd_line, signal)
+    signal_array = _calculate_ema_array(macd_array, signal)
     
     # Histogram = MACD - Signal
-    histogram = macd_line - signal_line
+    histogram = macd_array[-1] - signal_array[-1]
     
-    return macd_line, signal_line, histogram
+    return macd_array[-1], signal_array[-1], histogram
 
 def _calculate_ema(data, period):
-    """Helper function to calculate Exponential Moving Average."""
+    """Helper function to calculate Exponential Moving Average (returns single value)."""
+    if len(data) < period:
+        return data[-1] if len(data) > 0 else 0
+    
+    multiplier = 2 / (period + 1)
+    ema = data[0]
+    
+    for value in data[1:]:
+        ema = (value * multiplier) + (ema * (1 - multiplier))
+    
+    return ema
+
+def _calculate_ema_array(data, period):
+    """Helper function to calculate EMA array from data array."""
     multiplier = 2 / (period + 1)
     ema = np.zeros(len(data))
     ema[0] = data[0]
     
     for i in range(1, len(data)):
         ema[i] = (data[i] * multiplier) + (ema[i-1] * (1 - multiplier))
-    
-    return ema[-1]
-
-def _calculate_ema_from_values(values, period):
-    """Helper to calculate EMA from array of values."""
-    if len(values) < period:
-        return values[-1] if len(values) > 0 else 0
-    
-    multiplier = 2 / (period + 1)
-    ema = values[0]
-    
-    for value in values[1:]:
-        ema = (value * multiplier) + (ema * (1 - multiplier))
     
     return ema
 
