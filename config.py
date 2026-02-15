@@ -34,8 +34,9 @@ ATR_PERIOD = 14
 SMA_PERIOD = 20
 
 # --- RISK & STRATEGY PARAMETERS ---
-MAX_RISK_PERCENT = 0.05   # Max 5% of total equity to risk per trade.
-ATR_STOP_MULTIPLIER = 2.0 # Stop Loss distance = 2.0 * ATR.
+MAX_RISK_PERCENT = 0.08   # Max 8% of total equity to risk per trade (increased for profitability).
+ATR_STOP_MULTIPLIER = 1.5 # Stop Loss distance = 1.5 * ATR (tighter stops for better exits).
+PROFIT_TARGET_MULTIPLIER = 3.0  # Take profit at 3.0 * ATR above entry (risk:reward = 1:2).
 
 # --- EXECUTION PARAMETERS ---
-TRADE_INTERVAL_SECONDS = 60 # How often the bot checks for a signal (e.g., 60 seconds for 1-minute candles)
+TRADE_INTERVAL_SECONDS = 300 # How often the bot checks for a signal (5 minutes for better signal quality)

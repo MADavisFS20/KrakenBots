@@ -10,7 +10,8 @@ import strategy
 from config import (
     TRADING_PAIR_API, TRADING_PAIR_DISPLAY, QUOTE_CURRENCY, 
     ASSET_CURRENCY, MIN_ASSET_VOLUME, ATR_PERIOD, SMA_PERIOD,
-    MAX_RISK_PERCENT, ATR_STOP_MULTIPLIER, TRADE_INTERVAL_SECONDS
+    MAX_RISK_PERCENT, ATR_STOP_MULTIPLIER, TRADE_INTERVAL_SECONDS,
+    PROFIT_TARGET_MULTIPLIER
 )
 
 # --- GLOBAL STATE ---
@@ -18,13 +19,14 @@ in_position = False
 last_trade_price = 0.0
 position_volume = 0.0
 waiting_for_buy_signal = False
-current_stop_loss = 0.0 
+current_stop_loss = 0.0
+profit_target = 0.0  # Track profit target for take-profit exits 
 
 # --- EXECUTION HELPERS ---
 
 def print_status(data_points=None, indicators=None, balance=None):
     """Prints the current state of the bot."""
-    global in_position, last_trade_price, current_stop_loss
+    global in_position, last_trade_price, current_stop_loss, profit_target
     
     now = datetime.now()
     timestamp_str = now.strftime("%a %b %d %H:%M:%S %Y")
@@ -62,6 +64,10 @@ def print_status(data_points=None, indicators=None, balance=None):
     print(f"STATUS: {'IN POSITION' if in_position else 'OUT OF POSITION'}")
     if in_position:
         print(f"LAST BUY PRICE: {last_trade_price:.8f} | Stop Loss: {current_stop_loss:.8f} (Stop Multiplier: {ATR_STOP_MULTIPLIER}x ATR)")
+        print(f"PROFIT TARGET: {profit_target:.8f} (Target Multiplier: {PROFIT_TARGET_MULTIPLIER}x ATR)")
+        if price:
+            current_pnl_pct = ((price - last_trade_price) / last_trade_price) * 100 if last_trade_price > 0 else 0
+            print(f"CURRENT P/L: {current_pnl_pct:+.2f}%")
     
     print("="*70)
 
@@ -69,7 +75,7 @@ def print_status(data_points=None, indicators=None, balance=None):
 # --- MAIN EXECUTION ---
 
 def main():
-    global in_position, last_trade_price, position_volume, waiting_for_buy_signal, current_stop_loss
+    global in_position, last_trade_price, position_volume, waiting_for_buy_signal, current_stop_loss, profit_target
     
     print("Starting Rule-Based Crypto Trading Bot in LIVE Mode...")
     print(f"TRADING PAIR: {TRADING_PAIR_DISPLAY}")
@@ -82,21 +88,21 @@ def main():
             if current_time - last_trade_time >= TRADE_INTERVAL_SECONDS:
                 last_trade_time = current_time
                 
-                # 1. Gather Data (Need enough for SMA(20) and ATR(14)
-                ohlc_data_1min = kraken_api.get_historical_ohlc(TRADING_PAIR_API, interval=1, limit=max(SMA_PERIOD, ATR_PERIOD) + 5) 
+                # 1. Gather Data (Need enough for SMA(20) and ATR(14) on 5-min candles)
+                ohlc_data_5min = kraken_api.get_historical_ohlc(TRADING_PAIR_API, interval=5, limit=max(SMA_PERIOD, ATR_PERIOD) + 5) 
                 hourly_ohlc = kraken_api.get_historical_ohlc(TRADING_PAIR_API, interval=60, limit=2)
                 ticker_data = kraken_api.get_current_price_and_ticker(TRADING_PAIR_API)
                 depth_raw = kraken_api.get_order_book(TRADING_PAIR_API, depth=5)
                 
                 required_candles = max(SMA_PERIOD, ATR_PERIOD) + 1
-                if not ohlc_data_1min or len(ohlc_data_1min) < required_candles or not depth_raw or not ticker_data:
-                    print(f"[ERROR] Not enough market data for signal evaluation. Need {required_candles} 1-min candles. Retrying...")
+                if not ohlc_data_5min or len(ohlc_data_5min) < required_candles or not depth_raw or not ticker_data:
+                    print(f"[ERROR] Not enough market data for signal evaluation. Need {required_candles} 5-min candles. Retrying...")
                     time.sleep(TRADE_INTERVAL_SECONDS)
                     continue
                     
                 # 2. Evaluate Signals and Indicators
                 data_points, _, indicators = strategy.evaluate_data_points_verbose(
-                    ohlc_data_1min, depth_raw, ticker_data, hourly_ohlc
+                    ohlc_data_5min, depth_raw, ticker_data, hourly_ohlc
                 )
                 
                 # 3. Get Prices and Balance
@@ -114,28 +120,54 @@ def main():
                 hr_trend = data_points['HR_TREND']
                 atr_value = indicators.get('ATR', 0.0)
 
-                # 5. Stop Loss Logic (Dynamic)
+                # 5. Profit-Taking Logic (Check for profit target BEFORE stop loss)
+                if in_position and profit_target > 0 and price >= profit_target and asset_bal > MIN_ASSET_VOLUME:
+                    profit_pct = ((price - last_trade_price) / last_trade_price) * 100 if last_trade_price > 0 else 0
+                    print(f"[PROFIT TARGET HIT] Price reached profit target ({profit_target:.8f}). Profit: {profit_pct:+.2f}%. Selling ALL {ASSET_CURRENCY}.")
+                    sell_result = kraken_api.place_order(TRADING_PAIR_API, 'sell', asset_bal)
+                    if sell_result:
+                        in_position = False
+                        last_trade_price = 0.0
+                        current_stop_loss = 0.0
+                        profit_target = 0.0
+                        # Don't set waiting_for_buy_signal - allow immediate re-entry if conditions are good
+
+                # 6. Stop Loss Logic (Dynamic)
                 if in_position and current_stop_loss > 0 and price < current_stop_loss and asset_bal > MIN_ASSET_VOLUME:
                     print(f"[STOP LOSS] Price dropped below dynamic stop-loss ({current_stop_loss:.8f} -> {price:.8f}). Selling ALL {ASSET_CURRENCY}.")
-                    kraken_api.place_order(TRADING_PAIR_API, 'sell', asset_bal)
-                    in_position = False
-                    last_trade_price = 0.0
-                    current_stop_loss = 0.0
-                    waiting_for_buy_signal = True # Wait for confirmation before re-entry
+                    sell_result = kraken_api.place_order(TRADING_PAIR_API, 'sell', asset_bal)
+                    if sell_result:
+                        in_position = False
+                        last_trade_price = 0.0
+                        current_stop_loss = 0.0
+                        profit_target = 0.0
+                        waiting_for_buy_signal = True # Wait for confirmation before re-entry
 
-                # 6. Trade Decision Logic (Filtered and Risk-Managed)
+                # 7. Trade Decision Logic (Filtered and Risk-Managed)
                 if not waiting_for_buy_signal:
-                    # SELL Condition: Strong short signal AND Long-term trend is NOT strongly positive
-                    if signal_sum < -1 and hr_trend <= 0 and asset_bal >= MIN_ASSET_VOLUME:
-                        print(f"[TRADE] SELL signal (Sum: {signal_sum}). Executing SELL of {asset_bal:.4f} {ASSET_CURRENCY}.")
-                        trade_result = kraken_api.place_order(TRADING_PAIR_API, 'sell', asset_bal)
-                        if trade_result:
-                            in_position = False
-                            last_trade_price = 0.0
-                            current_stop_loss = 0.0
+                    # SELL Condition: Strong sell signal OR profitable position with weak trend
+                    if in_position and asset_bal >= MIN_ASSET_VOLUME:
+                        # Sell if: strong bearish signal OR moderate profit with weak bullish trend
+                        should_sell = (signal_sum < -1 and hr_trend <= 0)
+                        
+                        # Also sell if we have some profit and signals are weakening
+                        if not should_sell and last_trade_price > 0:
+                            profit_pct = ((price - last_trade_price) / last_trade_price) * 100
+                            if profit_pct > 1.0 and signal_sum < 0:  # 1%+ profit and negative signals
+                                should_sell = True
+                                print(f"[TRADE] Taking profit ({profit_pct:+.2f}%) on weakening signals.")
+                        
+                        if should_sell:
+                            print(f"[TRADE] SELL signal (Sum: {signal_sum}). Executing SELL of {asset_bal:.4f} {ASSET_CURRENCY}.")
+                            trade_result = kraken_api.place_order(TRADING_PAIR_API, 'sell', asset_bal)
+                            if trade_result:
+                                in_position = False
+                                last_trade_price = 0.0
+                                current_stop_loss = 0.0
+                                profit_target = 0.0
                             
-                    # BUY Condition: Strong short signal AND Long-term trend is positive
-                    elif signal_sum > 1 and hr_trend == 1 and quote_bal > 0 and atr_value > 0:
+                    # BUY Condition: Strong buy signal AND Long-term trend is positive
+                    elif not in_position and signal_sum > 1 and hr_trend == 1 and quote_bal > 0 and atr_value > 0:
                         buy_vol_calc, stop_loss_price = strategy.calculate_position_size(
                             total_equity, price, atr_value, MAX_RISK_PERCENT, ATR_STOP_MULTIPLIER
                         )
@@ -148,6 +180,9 @@ def main():
                                 in_position = True
                                 last_trade_price = price
                                 current_stop_loss = stop_loss_price
+                                # Calculate profit target: entry + (ATR * profit_multiplier)
+                                profit_target = price + (atr_value * PROFIT_TARGET_MULTIPLIER)
+                                print(f"[POSITION] Entry: {price:.8f}, Stop: {stop_loss_price:.8f}, Target: {profit_target:.8f}")
                 
                 # Re-entry logic after a stop-loss
                 elif waiting_for_buy_signal:
@@ -164,7 +199,9 @@ def main():
                                 in_position = True
                                 last_trade_price = price
                                 current_stop_loss = stop_loss_price
+                                profit_target = price + (atr_value * PROFIT_TARGET_MULTIPLIER)
                                 waiting_for_buy_signal = False
+                                print(f"[POSITION] Entry: {price:.8f}, Stop: {stop_loss_price:.8f}, Target: {profit_target:.8f}")
 
             # Wait for the next trade interval
             time_to_sleep = max(0, TRADE_INTERVAL_SECONDS - (time.time() - current_time))
