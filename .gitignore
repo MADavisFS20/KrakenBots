@@ -11,6 +11,19 @@ ENV/
 
 # Environment variables
 .env
+# Environment files
+.env
+.venv/
+venv/
+ENV/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 
 # IDE
 .vscode/
