@@ -36,7 +36,8 @@ SMA_PERIOD = 20
 # --- RISK & STRATEGY PARAMETERS ---
 MAX_RISK_PERCENT = 0.08   # Max 8% of total equity to risk per trade (increased for profitability).
 ATR_STOP_MULTIPLIER = 1.5 # Stop Loss distance = 1.5 * ATR (tighter stops for better exits).
-PROFIT_TARGET_MULTIPLIER = 3.0  # Take profit at 3.0 * ATR above entry (risk:reward = 1:2).
+PROFIT_TARGET_MULTIPLIER = 3.0  # Take profit at 3.0 * ATR above entry (Risk 1.5 ATR to gain 3.0 ATR = 1:2 risk:reward).
+MIN_PROFIT_PERCENT_FOR_WEAK_SIGNAL = 1.0  # Take profit if we have 1%+ gain and signals turn negative.
 
 # --- EXECUTION PARAMETERS ---
 TRADE_INTERVAL_SECONDS = 300 # How often the bot checks for a signal (5 minutes for better signal quality)

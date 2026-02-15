@@ -11,7 +11,7 @@ from config import (
     TRADING_PAIR_API, TRADING_PAIR_DISPLAY, QUOTE_CURRENCY, 
     ASSET_CURRENCY, MIN_ASSET_VOLUME, ATR_PERIOD, SMA_PERIOD,
     MAX_RISK_PERCENT, ATR_STOP_MULTIPLIER, TRADE_INTERVAL_SECONDS,
-    PROFIT_TARGET_MULTIPLIER
+    PROFIT_TARGET_MULTIPLIER, MIN_PROFIT_PERCENT_FOR_WEAK_SIGNAL
 )
 
 # --- GLOBAL STATE ---
@@ -153,7 +153,7 @@ def main():
                         # Also sell if we have some profit and signals are weakening
                         if not should_sell and last_trade_price > 0:
                             profit_pct = ((price - last_trade_price) / last_trade_price) * 100
-                            if profit_pct > 1.0 and signal_sum < 0:  # 1%+ profit and negative signals
+                            if profit_pct > MIN_PROFIT_PERCENT_FOR_WEAK_SIGNAL and signal_sum < 0:
                                 should_sell = True
                                 print(f"[TRADE] Taking profit ({profit_pct:+.2f}%) on weakening signals.")
                         
