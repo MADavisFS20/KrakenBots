@@ -1,12 +1,16 @@
 # strategy.py
 
-from config import ATR_PERIOD, SMA_PERIOD
-from indicators import calculate_sma, calculate_atr, get_candle_info, evaluate_candlestick_signal, check_hourly_trend
+from config import (ATR_PERIOD, SMA_PERIOD, RSI_PERIOD, 
+                    VOLUME_SPIKE_THRESHOLD, MIN_VOLUME_PERCENTILE)
+from indicators import (calculate_sma, calculate_atr, calculate_rsi, calculate_macd,
+                       detect_support_resistance, check_near_support_resistance,
+                       analyze_volume, detect_market_regime,
+                       get_candle_info, evaluate_candlestick_signal, check_hourly_trend)
 import math
 
 def evaluate_data_points_verbose(ohlc_data, order_book, ticker_data, hourly_ohlc):
     """
-    Evaluates market conditions using a rule-based system.
+    Evaluates market conditions using a rule-based system with advanced indicators.
     Returns: data_points, decisions, indicators
     """
     data_points = {}
@@ -19,6 +23,28 @@ def evaluate_data_points_verbose(ohlc_data, order_book, ticker_data, hourly_ohlc
 
     indicators['ATR'] = calculate_atr(ohlc_data, ATR_PERIOD)
     indicators['SMA'] = calculate_sma(ohlc_data, SMA_PERIOD)
+    indicators['RSI'] = calculate_rsi(ohlc_data, RSI_PERIOD)
+    
+    # MACD calculation
+    macd_line, signal_line, histogram = calculate_macd(ohlc_data)
+    indicators['MACD'] = macd_line
+    indicators['MACD_SIGNAL'] = signal_line
+    indicators['MACD_HIST'] = histogram
+    
+    # Support/Resistance
+    support_levels, resistance_levels = detect_support_resistance(ohlc_data)
+    indicators['SUPPORT'] = support_levels
+    indicators['RESISTANCE'] = resistance_levels
+    
+    # Volume analysis
+    vol_signal, avg_vol, current_vol = analyze_volume(ohlc_data)
+    indicators['AVG_VOLUME'] = avg_vol
+    indicators['CURRENT_VOLUME'] = current_vol
+    
+    # Market regime
+    regime, adx = detect_market_regime(ohlc_data)
+    indicators['REGIME'] = regime
+    indicators['ADX'] = adx
     
     # --- Decision Point Evaluation ---
 
@@ -31,6 +57,37 @@ def evaluate_data_points_verbose(ohlc_data, order_book, ticker_data, hourly_ohlc
     hr_trend_decision = check_hourly_trend(hourly_ohlc)
     data_points['HR_TREND'] = hr_trend_decision
     decisions.append(hr_trend_decision)
+    
+    # RSI (Momentum): Overbought/Oversold
+    rsi_decision = 0
+    if indicators['RSI'] is not None:
+        if indicators['RSI'] < 30:
+            rsi_decision = 1  # Oversold, bullish
+        elif indicators['RSI'] > 70:
+            rsi_decision = -1  # Overbought, bearish
+        elif indicators['RSI'] < 45:
+            rsi_decision = 0.5  # Slightly bullish
+        elif indicators['RSI'] > 55:
+            rsi_decision = -0.5  # Slightly bearish
+    data_points['RSI'] = rsi_decision
+    decisions.append(rsi_decision)
+    
+    # MACD (Trend Direction)
+    macd_decision = 0
+    if indicators['MACD_HIST'] is not None:
+        if indicators['MACD_HIST'] > 0:
+            macd_decision = 1  # Bullish
+        elif indicators['MACD_HIST'] < 0:
+            macd_decision = -1  # Bearish
+    data_points['MACD'] = macd_decision
+    decisions.append(macd_decision)
+    
+    # S/R (Support/Resistance): Price near levels
+    sr_decision = check_near_support_resistance(
+        current_price, support_levels, resistance_levels
+    )
+    data_points['SR'] = sr_decision
+    decisions.append(sr_decision)
 
     # ODB (Order book Spread): Top Bid vs. Top Ask Spread (Proximity)
     odb_decision = 0
@@ -51,26 +108,14 @@ def evaluate_data_points_verbose(ohlc_data, order_book, ticker_data, hourly_ohlc
     data_points['ODB'] = odb_decision
     decisions.append(odb_decision)
 
-    # VOL (Volume & Candle Alignment)
+    # VOL (Volume & Candle Alignment with spike confirmation)
     vol_decision = 0
-    if ohlc_data and len(ohlc_data) > 1 and current_candle:
-        vol_current = current_candle['v']
-        vol_prev = float(ohlc_data[-2][6])
-        
-        # Check for significant volume change (spike/drop)
-        if vol_current > vol_prev * 1.5: 
-            vol_signal = 1
-        elif vol_current < vol_prev * 0.5: 
-            vol_signal = -1
-        else:
-            vol_signal = 0
-
-        # Align strong volume with directional candle
+    if vol_signal != 0 and current_candle:
+        # Volume spike with directional candle
         if vol_signal == 1 and current_candle['is_bullish']:
             vol_decision = 1 
         elif vol_signal == 1 and current_candle['is_bearish']:
             vol_decision = -1 
-        
     data_points['VOL'] = vol_decision
     decisions.append(vol_decision)
 
@@ -113,6 +158,17 @@ def evaluate_data_points_verbose(ohlc_data, order_book, ticker_data, hourly_ohlc
             sma_pos_decision = -1
     data_points['SMA_POS'] = sma_pos_decision
     decisions.append(sma_pos_decision)
+    
+    # REGIME (Market Regime): Trending vs Ranging
+    regime_decision = 0
+    if regime == 'trending':
+        # In trending market, favor trend-following
+        if macd_decision > 0:
+            regime_decision = 0.5
+        elif macd_decision < 0:
+            regime_decision = -0.5
+    data_points['REGIME'] = regime_decision
+    decisions.append(regime_decision)
 
     return data_points, decisions, indicators
 
