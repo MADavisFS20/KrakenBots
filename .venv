@@ -1,0 +1,15 @@
+# --- CONFIGURATION ---
+  # IMPORTANT: UNCOMMENT AND REPLACE KEYS WITH YOUR VALID KRAKEN API>
+  API_KEY = "2T3RZGOIFTD7pswFalJX33/Fc+JHfesIyjICO/YJD8SO6YNtBtEVz7M>
+  API_SECRET = "K7+dnkpaQp32YOZ5Uvw8Q5lzUS9uSwz7aZOu2e0nBAufZce5RB7K>
+ 
+# --- KRAKEN API HELPERS (functions omitted for brevity, assume co>
+ 
+  def get_kraken_signature(urlpath, data, secret):
+      postdata = urllib.parse.urlencode(data)
+      encoded = (str(data['nonce']) + postdata).encode()
+      message = urlpath.encode() + hashlib.sha256(encoded).digest()
+      mac = hmac.new(base64.b64decode(secret), message, hashlib.sha5>
+      sigdigest = base64.b64encode(mac.digest())
+      return sigdigest.decode()
+ 
