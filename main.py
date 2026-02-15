@@ -26,6 +26,10 @@ position_entry_time = 0
 last_performance_log = 0
 
 
+def print_status(data_points=None, indicators=None, balance=None):
+    """Prints the current state of the bot."""
+    global in_position, last_trade_price, current_stop_loss, profit_target
+    
 def print_status(data_points=None, indicators=None, balance=None, risk_stats=None):
     """Prints the current state of the bot with enhanced information."""
     now = datetime.now()
@@ -86,7 +90,7 @@ def print_status(data_points=None, indicators=None, balance=None, risk_stats=Non
 
 
 def main():
-    global risk_manager, trade_analytics, candles_in_position, position_entry_time, last_performance_log
+    global in_position, last_trade_price, position_volume, waiting_for_buy_signal, current_stop_loss, profit_target
     
     print("="*80)
     print("ADVANCED CRYPTO TRADING BOT - Multi-Timeframe with Risk Management")
@@ -131,18 +135,21 @@ def main():
                     time.sleep(TRADE_INTERVAL_SECONDS)
                     continue
                 
-                # 2. Fetch other market data
+                # 1. Gather Data (Need enough for SMA(20) and ATR(14) on 5-min candles)
+                ohlc_data_5min = kraken_api.get_historical_ohlc(TRADING_PAIR_API, interval=5, limit=max(SMA_PERIOD, ATR_PERIOD) + 5) 
+                hourly_ohlc = kraken_api.get_historical_ohlc(TRADING_PAIR_API, interval=60, limit=2)
                 ticker_data = kraken_api.get_current_price_and_ticker(TRADING_PAIR_API)
                 depth_raw = kraken_api.get_order_book(TRADING_PAIR_API, depth=5)
                 
-                if not ticker_data or not depth_raw:
-                    print("[ERROR] Could not fetch market data. Retrying...")
+                required_candles = max(SMA_PERIOD, ATR_PERIOD) + 1
+                if not ohlc_data_5min or len(ohlc_data_5min) < required_candles or not depth_raw or not ticker_data:
+                    print(f"[ERROR] Not enough market data for signal evaluation. Need {required_candles} 5-min candles. Retrying...")
                     time.sleep(TRADE_INTERVAL_SECONDS)
                     continue
                 
                 # 3. Evaluate signals with all new indicators
                 data_points, _, indicators = strategy.evaluate_data_points_verbose(
-                    primary_data, depth_raw, ticker_data, trend_data
+                    ohlc_data_5min, depth_raw, ticker_data, hourly_ohlc
                 )
                 
                 # 4. Get current price and balance

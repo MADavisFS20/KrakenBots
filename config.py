@@ -44,6 +44,13 @@ MIN_CANDLES_PRIMARY = 30   # Minimum candles needed for primary timeframe
 MIN_CANDLES_TREND = 20     # Minimum candles needed for trend timeframe
 
 # --- RISK & STRATEGY PARAMETERS ---
+MAX_RISK_PERCENT = 0.08   # Max 8% of total equity to risk per trade (increased for profitability).
+ATR_STOP_MULTIPLIER = 1.5 # Stop Loss distance = 1.5 * ATR (tighter stops for better exits).
+PROFIT_TARGET_MULTIPLIER = 3.0  # Take profit at 3.0 * ATR above entry (Risk 1.5 ATR to gain 3.0 ATR = 1:2 risk:reward).
+MIN_PROFIT_PERCENT_FOR_WEAK_SIGNAL = 1.0  # Take profit if we have 1%+ gain and signals turn negative.
+
+# --- EXECUTION PARAMETERS ---
+TRADE_INTERVAL_SECONDS = 300 # How often the bot checks for a signal (5 minutes for better signal quality)
 MAX_RISK_PERCENT = 0.05   # Max 5% of total equity to risk per trade.
 ATR_STOP_MULTIPLIER = 2.0 # Stop Loss distance = 2.0 * ATR.
 MAX_DRAWDOWN_PERCENT = 0.05  # Maximum 5% drawdown before halting
