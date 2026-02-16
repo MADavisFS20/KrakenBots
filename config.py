@@ -23,11 +23,11 @@ if not API_SECRET or API_SECRET == "YOUR_KRAKEN_API_SECRET_HERE":
     )
 
 # --- TRADING PAIR & CURRENCY INFO ---
-TRADING_PAIR_API = "BTCUSDT"
-TRADING_PAIR_DISPLAY = "BTC/USDT"
+TRADING_PAIR_API = "XRPUSDT"
+TRADING_PAIR_DISPLAY = "XRP/USDT"
 QUOTE_CURRENCY = "USDT" # The currency used to buy the asset (e.g., USD, USDT)
-ASSET_CURRENCY = "BTC"  # The asset being traded (e.g., BTC, ETH)
-MIN_ASSET_VOLUME = 0.0001 # Minimum volume for the asset (BTC).
+ASSET_CURRENCY = "XRP"  # The asset being traded (e.g., BTC, ETH)
+MIN_ASSET_VOLUME = 0.0000000000000000001 # Minimum volume for the asset (BTC).
 
 # --- INDICATOR PERIODS (Optimized for 5-min timeframes) ---
 ATR_PERIOD = 14
